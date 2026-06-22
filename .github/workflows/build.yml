@@ -1,0 +1,87 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: '--target aarch64-apple-darwin'
+            name: 'macOS ARM64'
+          - platform: 'macos-13'
+            args: '--target x86_64-apple-darwin'
+            name: 'macOS x64'
+          - platform: 'windows-latest'
+            args: ''
+            name: 'Windows x64'
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ contains(matrix.args, 'apple-darwin') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install macOS dependencies
+        if: contains(matrix.platform, 'macos')
+        run: |
+          xcode-select --install || true
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Download ONNX Runtime DLL (Windows)
+        if: contains(matrix.platform, 'windows')
+        shell: bash
+        run: |
+          mkdir -p .rapidocr_onnxruntime
+          curl -L -o .rapidocr_onnxruntime/onnxruntime.dll \
+            "https://github.com/microsoft/onnxruntime/releases/download/v1.24.1/onnxruntime-win-x64-1.24.1.zip" -f || true
+          # Extract from zip if download succeeded
+          if [ -f .rapidocr_onnxruntime/onnxruntime.dll ] && [ $(stat -c%s .rapidocr_onnxruntime/onnxruntime.dll 2>/dev/null || stat -f%z .rapidocr_onnxruntime/onnxruntime.dll 2>/dev/null || echo 0) -lt 1000 ]; then
+            curl -L -o /tmp/ort.zip "https://github.com/microsoft/onnxruntime/releases/download/v1.24.1/onnxruntime-win-x64-1.24.1.zip"
+            unzip -o /tmp/ort.zip "onnxruntime-win-x64-1.24.1/lib/*" -d .rapidocr_onnxruntime/
+            cp .rapidocr_onnxruntime/onnxruntime-win-x64-1.24.1/lib/onnxruntime.dll .rapidocr_onnxruntime/
+            cp .rapidocr_onnxruntime/onnxruntime-win-x64-1.24.1/lib/onnxruntime_providers_shared.dll .rapidocr_onnxruntime/ || true
+          fi
+
+      - name: Download ONNX Runtime dylib (macOS)
+        if: contains(matrix.platform, 'macos')
+        run: |
+          mkdir -p .rapidocr_onnxruntime
+          curl -L -o /tmp/ort.tgz "https://github.com/microsoft/onnxruntime/releases/download/v1.24.1/onnxruntime-osx-universal2-1.24.1.tgz"
+          tar -xzf /tmp/ort.tgz -C .rapidocr_onnxruntime/
+          cp .rapidocr_onnxruntime/onnxruntime-osx-universal2-1.24.1/lib/libonnxruntime.*.dylib .rapidocr_onnxruntime/ || true
+
+      - name: Build
+        run: npx tauri build ${{ matrix.args }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: meter-ocr-${{ matrix.name }}
+          path: |
+            src-tauri/target/**/release/bundle/**/*.msi
+            src-tauri/target/**/release/bundle/**/*.dmg
+            src-tauri/target/**/release/bundle/**/*.app
+            src-tauri/target/**/release/**/*.exe
+          if-no-files-found: warn

@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meter OCR - 电表图片分拣</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 {
+      text-align: center;
+      font-size: 28px;
+      margin-bottom: 8px;
+      background: linear-gradient(90deg, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      text-align: center;
+      color: #94a3b8;
+      margin-bottom: 32px;
+      font-size: 14px;
+    }
+    .card {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      backdrop-filter: blur(10px);
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #cbd5e1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .form-group { margin-bottom: 16px; }
+    label {
+      display: block;
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 6px;
+    }
+    input[type="text"], textarea {
+      width: 100%;
+      padding: 10px 14px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus, textarea:focus { border-color: #60a5fa; }
+    textarea { height: 120px; resize: vertical; font-family: monospace; }
+    .row { display: flex; gap: 12px; align-items: flex-end; }
+    .row .form-group { flex: 1; margin-bottom: 0; }
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary {
+      background: linear-gradient(135deg, #3b82f6, #6366f1);
+      color: white;
+    }
+    .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,0.4); }
+    .btn-secondary {
+      background: rgba(148,163,184,0.2);
+      color: #cbd5e1;
+    }
+    .btn-secondary:hover:not(:disabled) { background: rgba(148,163,184,0.3); }
+    .btn-start {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      margin-top: 8px;
+    }
+    .btn-start:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(16,185,129,0.4); }
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 12px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #a78bfa);
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+    .log-area {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 8px;
+      padding: 12px;
+      height: 240px;
+      overflow-y: auto;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .log-entry { padding: 2px 0; }
+    .log-entry .time { color: #64748b; margin-right: 8px; }
+    .log-entry.info { color: #94a3b8; }
+    .log-entry.success { color: #34d399; }
+    .log-entry.error { color: #f87171; }
+    .log-entry.warn { color: #fbbf24; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .stat-item {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+    .stat-value { font-size: 24px; font-weight: 700; color: #60a5fa; }
+    .stat-label { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .status-idle { background: rgba(148,163,184,0.2); color: #94a3b8; }
+    .status-running { background: rgba(59,130,246,0.2); color: #60a5fa; }
+    .status-done { background: rgba(16,185,129,0.2); color: #34d399; }
+    .status-error { background: rgba(248,113,113,0.2); color: #f87171; }
+    .file-input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .file-input-wrapper input[type="text"] { flex: 1; }
+    .hint {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    /* 收款码折叠区域 */
+    .reward-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      padding: 4px 0;
+    }
+    .reward-toggle:hover .reward-arrow { color: #60a5fa; }
+    .reward-arrow {
+      font-size: 12px;
+      color: #64748b;
+      transition: transform 0.2s, color 0.2s;
+    }
+    .reward-arrow.open { transform: rotate(180deg); }
+    .reward-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+    .reward-content.open { max-height: 300px; }
+    .qrcode-section {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      flex-wrap: wrap;
+      padding-top: 12px;
+    }
+    .qrcode-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      width: 180px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .qrcode-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(96,165,250,0.15);
+    }
+    .qrcode-card img {
+      width: 140px;
+      height: 140px;
+      border-radius: 8px;
+      background: #fff;
+      padding: 8px;
+      object-fit: contain;
+    }
+    .qrcode-label {
+      margin-top: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚡ Meter OCR</h1>
+    <p class="subtitle">电表图片 OCR 识别与自动分拣工具</p>
+
+    <!-- 收款码 -->
+    <div class="card">
+      <div class="reward-toggle" id="rewardToggle">
+        <div class="card-title" style="margin-bottom:0">☕ 打赏作者，交个朋友</div>
+        <span class="reward-arrow" id="rewardArrow">▼</span>
+      </div>
+      <div class="reward-content" id="rewardContent">
+        <div class="qrcode-section">
+          <div class="qrcode-card">
+            <img src="../assets/qrcode/wechat.png" alt="微信支付" onerror="this.style.display='none'" />
+            <div class="qrcode-label">微信支付</div>
+          </div>
+          <div class="qrcode-card">
+            <img src="../assets/qrcode/alipay.png" alt="支付宝" onerror="this.style.display='none'" />
+            <div class="qrcode-label">支付宝</div>
+          </div>
+        </div>
+        <div class="hint" style="text-align:center; margin-top:12px;">
+          请将收款码图片放到 assets/qrcode/ 目录（wechat.png / alipay.png）
+        </div>
+      </div>
+    </div>
+
+    <!-- 配置区 -->
+    <div class="card">
+      <div class="card-title">📁 路径配置</div>
+      <div class="row">
+        <div class="form-group">
+          <label>图片文件夹路径</label>
+          <div class="file-input-wrapper">
+            <input type="text" id="imageDir" placeholder="选择包含照片的文件夹路径..." />
+            <button class="btn-secondary" id="btnBrowseImage">浏览</button>
+          </div>
+          <div class="hint">存放待识别照片的文件夹</div>
+        </div>
+        <div class="form-group">
+          <label>输出目录（可选）</label>
+          <div class="file-input-wrapper">
+            <input type="text" id="outputDir" placeholder="留空则使用图片目录下的 output" />
+            <button class="btn-secondary" id="btnBrowseOutput">浏览</button>
+          </div>
+          <div class="hint">分拣结果存放位置</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编号列表 -->
+    <div class="card">
+      <div class="card-title">🔢 编号列表</div>
+      <div class="form-group">
+        <label>编号列表（每行一个编号）</label>
+        <textarea id="numberList" placeholder="09001DY00000022207181164&#10;09001DY00000022207181165&#10;09001DY00000022207181166"></textarea>
+        <div class="hint">每行输入一个编号，OCR 识别图片中的文本，匹配到对应编号则分拣到同名文件夹</div>
+      </div>
+      <div class="row">
+        <button class="btn-secondary" id="btnLoadFolders">📂 从已有文件夹加载编号</button>
+        <span class="hint" style="margin-top:0">自动读取输出目录下已有文件夹名称作为编号</span>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label>🔍 特征匹配 — 编号后几位作为匹配特征？</label>
+        <input type="number" id="trailingDigits" value="7" min="1" max="20" style="width:100px" />
+        <span class="hint">例如设为 7，则匹配编号的最后 7 位数字</span>
+      </div>
+    </div>
+
+    <!-- 操作区 -->
+    <div class="card">
+      <div class="card-title">🚀 操作</div>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+        <span>状态：</span>
+        <span class="status-badge status-idle" id="statusBadge">待命</span>
+      </div>
+      <div class="progress-bar" id="progressBar" style="display:none;">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <button class="btn-start" id="btnStart">▶ 开始识别与分拣</button>
+      <div class="stats" id="stats" style="display:none;">
+        <div class="stat-item"><div class="stat-value" id="statTotal">0</div><div class="stat-label">总图片</div></div>
+        <div class="stat-item"><div class="stat-value" id="statMatched">0</div><div class="stat-label">已匹配</div></div>
+        <div class="stat-item"><div class="stat-value" id="statUnmatched">0</div><div class="stat-label">模糊/未匹配</div></div>
+        <div class="stat-item"><div class="stat-value" id="statTime">0s</div><div class="stat-label">耗时</div></div>
+      </div>
+    </div>
+
+    <!-- 日志区 -->
+    <div class="card">
+      <div class="card-title">📋 运行日志</div>
+      <div class="log-area" id="logArea"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { invoke } from '@tauri-apps/api/core';
+    import { listen } from '@tauri-apps/api/event';
+
+    // 调试
+    console.log('invoke available:', typeof invoke);
+
+    const el = {
+      imageDir: document.getElementById('imageDir'),
+      outputDir: document.getElementById('outputDir'),
+      numberList: document.getElementById('numberList'),
+      btnBrowseImage: document.getElementById('btnBrowseImage'),
+      btnBrowseOutput: document.getElementById('btnBrowseOutput'),
+      btnLoadFolders: document.getElementById('btnLoadFolders'),
+      btnStart: document.getElementById('btnStart'),
+      statusBadge: document.getElementById('statusBadge'),
+      progressBar: document.getElementById('progressBar'),
+      progressFill: document.getElementById('progressFill'),
+      logArea: document.getElementById('logArea'),
+      stats: document.getElementById('stats'),
+      statTotal: document.getElementById('statTotal'),
+      statMatched: document.getElementById('statMatched'),
+      statUnmatched: document.getElementById('statUnmatched'),
+      statTime: document.getElementById('statTime'),
+    };
+
+    function log(msg, type = 'info') {
+      const now = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      div.className = `log-entry ${type}`;
+      div.innerHTML = `<span class="time">[${now}]</span>${msg}`;
+      el.logArea.appendChild(div);
+      el.logArea.scrollTop = el.logArea.scrollHeight;
+    }
+
+    function setStatus(text, cls) {
+      el.statusBadge.textContent = text;
+      el.statusBadge.className = `status-badge ${cls}`;
+    }
+
+    async function browseFolder(target) {
+      try {
+        const selected = await invoke('select_folder');
+        if (selected) {
+          if (target === 'image') el.imageDir.value = selected;
+          else el.outputDir.value = selected;
+        }
+      } catch (e) {
+        console.error('选择文件夹失败:', e);
+      }
+    }
+
+    el.btnBrowseImage.addEventListener('click', () => browseFolder('image'));
+    el.btnBrowseOutput.addEventListener('click', () => browseFolder('output'));
+
+    el.btnLoadFolders.addEventListener('click', async () => {
+      const outDir = el.outputDir.value || el.imageDir.value;
+      if (!outDir) { alert('请先选择图片目录'); return; }
+      try {
+        const folders = await invoke('list_folders', { path: outDir });
+        el.numberList.value = folders.join('\n');
+        log(`从 ${outDir} 加载了 ${folders.length} 个文件夹编号`, 'success');
+      } catch (e) {
+        log(`加载失败: ${e}`, 'error');
+      }
+    });
+
+    el.btnStart.addEventListener('click', async () => {
+      const imageDir = el.imageDir.value.trim();
+      const outputDir = el.outputDir.value.trim();
+      const numbers = el.numberList.value.split('\n').map(s => s.trim()).filter(Boolean);
+      const trailingDigits = parseInt(document.getElementById('trailingDigits').value) || 7;
+
+      if (!imageDir) { alert('请选择图片文件夹'); return; }
+      if (numbers.length === 0) { alert('请输入至少一个编号'); return; }
+
+      el.btnStart.disabled = true;
+      document.querySelectorAll('#imageDir, #outputDir, #numberList, #trailingDigits, .btn-secondary').forEach(el => el.disabled = true);
+      setStatus('运行中', 'status-running');
+      el.progressBar.style.display = 'block';
+      el.stats.style.display = 'grid';
+      el.logArea.innerHTML = '';
+      el.progressFill.style.width = '0%';
+
+      log(`开始处理，图片目录: ${imageDir}`, 'info');
+      log(`编号列表: ${numbers.join(', ')}`, 'info');
+
+      const startTime = Date.now();
+
+      try {
+        // 注册进度回调
+        const unlisten = await listen('ocr-progress', (evt) => {
+          const { current, total, matched, unmatched, current_file, matched_number, ocr_text } = evt.payload;
+          const pct = Math.round((current / total) * 100);
+          el.progressFill.style.width = `${pct}%`;
+          el.statTotal.textContent = total;
+          el.statMatched.textContent = matched;
+          el.statUnmatched.textContent = unmatched;
+          if (matched_number) {
+            log(`✓ ${current_file} → 匹配 [${matched_number}] "${ocr_text}"`, 'success');
+          } else {
+            log(`? ${current_file} → "${ocr_text}"`, 'warn');
+          }
+        });
+
+        const unlistenDone = await listen('ocr-done', (evt) => {
+          const { total, matched, unmatched, elapsed } = evt.payload;
+          el.statTotal.textContent = total;
+          el.statMatched.textContent = matched;
+          el.statUnmatched.textContent = unmatched;
+          el.statTime.textContent = `${elapsed}s`;
+          el.progressFill.style.width = '100%';
+          setStatus('完成', 'status-done');
+          log(`🎉 处理完成！共 ${total} 张，匹配 ${matched} 张，模糊 ${unmatched} 张，耗时 ${elapsed} 秒`, 'success');
+          el.btnStart.disabled = false;
+          document.querySelectorAll('#imageDir, #outputDir, #numberList, #trailingDigits, .btn-secondary').forEach(el => el.disabled = false);
+        });
+
+        const unlistenErr = await listen('ocr-error', (evt) => {
+          log(`❌ 错误: ${evt.payload}`, 'error');
+          setStatus('出错', 'status-error');
+          el.btnStart.disabled = false;
+          document.querySelectorAll('#imageDir, #outputDir, #numberList, #trailingDigits, .btn-secondary').forEach(el => el.disabled = false);
+        });
+
+        await invoke('start_ocr', { imageDir, outputDir, numbers, trailingDigits });
+
+        unlisten();
+        unlistenDone();
+        unlistenErr();
+      } catch (e) {
+        log(`❌ 异常: ${e}`, 'error');
+        setStatus('出错', 'status-error');
+        el.btnStart.disabled = false;
+        document.querySelectorAll('#imageDir, #outputDir, #numberList, #trailingDigits, .btn-secondary').forEach(el => el.disabled = false);
+      }
+    });
+
+    // 收款码折叠
+    const rewardToggle = document.getElementById('rewardToggle');
+    const rewardContent = document.getElementById('rewardContent');
+    const rewardArrow = document.getElementById('rewardArrow');
+    rewardToggle.addEventListener('click', () => {
+      rewardContent.classList.toggle('open');
+      rewardArrow.classList.toggle('open');
+    });
+
+    // 加载收款码
+    async function loadQrcodes() {
+      const images = document.querySelectorAll('#qrcodeSection img');
+      for (const img of images) {
+        const name = img.getAttribute('alt') === '微信支付' ? 'wechat.jpg' : 'alipay.jpg';
+        try {
+          const dataUrl = await invoke('get_qrcode', { name });
+          if (dataUrl) {
+            img.src = dataUrl;
+            img.style.display = '';
+          }
+        } catch (e) {
+          console.warn('加载收款码失败:', name, e);
+        }
+      }
+    }
+
+    // 初始日志
+    log('程序已就绪，请选择图片目录和编号列表后点击开始', 'info');
+    loadQrcodes();
+  </script>
+</body>
+</html>
