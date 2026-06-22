@@ -1,0 +1,15 @@
+构建一个基于 Tauri v2 + Rust 后端 + ONNX Runtime (ort Crate) 的跨平台（Windows & macOS）离线桌面客户端。
+用户会输入本地存放照片文件夹路径和编号列表(可能是用编号命名已经创建好的一堆文件夹的父文件夹路径)
+先编号后(8)位文本列表整理到相对路径存放,然后识别图片文本如果包含列表中其中一个数字就存到对应文件夹(如果用户提供了已命名文件夹就复制进去),如果匹配不到就放到相对路径[模糊图片]文件夹存放
+
+技术栈参考链接
+https://v2.tauri.app/zh-cn/start/
+
+https://rapidai.github.io/RapidOCRDocs/main/quickstart/
+https://github.com/rapidai/rapidocr
+
+模型路径
+.rapidocr_onnxruntime\models\en_PP-OCRv4_rec_infer.onnx
+
+测试照片 temp/images
+测试编号文件夹 temp/numbered_folders
