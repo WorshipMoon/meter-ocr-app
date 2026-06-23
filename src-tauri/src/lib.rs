@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
-use tauri::{Emitter, Manager, State};
+use tauri::{Emitter, Manager};
 use walkdir::WalkDir;
 
 struct AppState {
@@ -98,19 +98,18 @@ async fn start_ocr(image_dir: String, output_dir: Option<String>, numbers: Vec<S
 
         let result = (|| -> anyhow::Result<String> {
             let img = image::open(img).map_err(|e| anyhow::anyhow!("打开图片失败: {}", e))?;
-            // 缩小图片提高速度（最长边不超过 1500px）
-            let max_side = 1500u32;
-            let (w, h) = img.dimensions();
-            let img = if w.max(h) > max_side {
-                let ratio = max_side as f64 / w.max(h) as f64;
-                img.resize((w as f64 * ratio) as u32, (h as f64 * ratio) as u32, image::imageops::FilterType::Triangle)
-            } else { img };
             let rgb = img.to_rgb8();
+            let rgb = if rgb.width().max(rgb.height()) > 1500 {
+                let r = 1500.0 / rgb.width().max(rgb.height()) as f64;
+                let (nw, nh) = ((rgb.width() as f64 * r) as u32, (rgb.height() as f64 * r) as u32);
+                image::imageops::resize(&rgb, nw, nh, image::imageops::FilterType::Triangle)
+            } else { rgb };
             let (w, h) = rgb.dimensions();
             let pixels = rgb.into_raw();
             let src = ImageSource::from_bytes(&pixels, (w, h)).map_err(|e| anyhow::anyhow!("{:?}", e))?;
             let input = st.engine.prepare_input(src)?;
-            st.engine.get_text(&input)
+            let text = st.engine.get_text(&input)?;
+            Ok(text.chars().filter(|c| c.is_ascii_digit() || c.is_whitespace()).collect())
         })();
 
         match result {

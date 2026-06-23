@@ -240,7 +240,7 @@
       <div class="reward-content" id="rewardContent">
         <div class="qrcode-section">
           <div class="qrcode-card">
-            <img src="../assets/qrcode/wechat.hpg" alt="微信支付" onerror="this.style.display='none'" />
+            <img src="../assets/qrcode/wechat.jpg" alt="微信支付" onerror="this.style.display='none'" />
             <div class="qrcode-label">微信支付</div>
           </div>
           <div class="qrcode-card">
@@ -283,9 +283,9 @@
       <div class="form-group">
         <label>编号列表（每行一个编号）</label>
         <textarea id="numberList" placeholder="09001DY00000022207181164&#10;09001DY00000022207181165&#10;09001DY00000022207181166"></textarea>
-        <div class="hint">每行输入一个编号，OCR 识别图片中的文本，匹配到对应编号则分拣到同名文件夹</div>
+        <div class="hint">每行输入一个编号(可以直接从excel中复制一列出来)，OCR 识别图片中的文本，匹配到对应编号则分拣到同名文件夹</div>
+        <div class="hint" style="margin-top:0;color: #f87171">也可以自动读取输出目录下已有文件夹名称作为编号</div>
       </div>
-      <p>自动读取输出目录下已有文件夹名称作为编号</p>
       <div class="row">
         <button class="btn-secondary" id="btnLoadFolders">📂 从已有文件夹加载编号</button>
         <!-- <span class="hint" style="margin-top:0;color: #f87171">自动读取输出目录下已有文件夹名称作为编号</span> -->

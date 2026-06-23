@@ -28,5 +28,5 @@ image = "0.25"
 regex = "1"
 rfd = "0.15"
 tokio = { version = "1", features = ["time"] }
-ocrs = { version = "0.12", features = ["onnx"] }
-rten = { version = "0.24", features = ["onnx_format"] }
+ocrs = "0.12"
+rten = "0.24"
