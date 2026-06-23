@@ -60,16 +60,27 @@ async fn select_folder() -> Result<Option<String>, String> {
 
 #[tauri::command]
 fn get_qrcode(ah: tauri::AppHandle, name: String) -> Result<Option<String>, String> {
-    let dir = if cfg!(debug_assertions) {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("assets/qrcode")
+    let paths = if cfg!(debug_assertions) {
+        vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/qrcode")]
     } else {
-        ah.path().resource_dir().map(|p| p.join("assets/qrcode")).unwrap_or(PathBuf::from("assets/qrcode"))
+        let rd = ah.path().resource_dir().unwrap_or_default();
+        vec![
+            rd.join("assets/qrcode"),
+            rd.join("qrcode"),
+            rd.clone(),
+            PathBuf::from("assets/qrcode"),
+        ]
     };
-    let fp = dir.join(&name);
-    if !fp.exists() { return Ok(None); }
-    let d = fs::read(&fp).map_err(|e| e.to_string())?;
-    let m = match fp.extension().and_then(|e| e.to_str()) { Some("png") => "image/png", Some("jpg")|Some("jpeg") => "image/jpeg", _ => "image/png" };
-    Ok(Some(format!("data:{};base64,{}", m, base64::engine::general_purpose::STANDARD.encode(&d))))
+    for dir in &paths {
+        let fp = dir.join(&name);
+        log::info!("get_qrcode 尝试: {:?}", fp);
+        if fp.exists() {
+            let d = fs::read(&fp).map_err(|e| e.to_string())?;
+            let m = match fp.extension().and_then(|e| e.to_str()) { Some("png") => "image/png", Some("jpg")|Some("jpeg") => "image/jpeg", _ => "image/png" };
+            return Ok(Some(format!("data:{};base64,{}", m, base64::engine::general_purpose::STANDARD.encode(&d))));
+        }
+    }
+    Ok(None)
 }
 
 #[tauri::command]
@@ -87,7 +98,7 @@ async fn start_ocr(image_dir: String, output_dir: Option<String>, numbers: Vec<S
     let op = match output_dir { Some(p) if !p.is_empty() => PathBuf::from(p), _ => ip.join("output") };
     fs::create_dir_all(&op).map_err(|e| e.to_string())?;
     for n in &numbers { fs::create_dir_all(&op.join(n)).map_err(|e| e.to_string())?; }
-    let uq = op.join("模糊图片"); fs::create_dir_all(&uq).map_err(|e| e.to_string())?;
+    let uq = op.join("模糊或没对应编码图片"); fs::create_dir_all(&uq).map_err(|e| e.to_string())?;
     let imgs = collect_images(ip); let total = imgs.len();
     if total == 0 { return Err("未找到图片".to_string()); }
     let t0 = Instant::now(); let mc = Arc::new(AtomicUsize::new(0)); let uc = Arc::new(AtomicUsize::new(0));

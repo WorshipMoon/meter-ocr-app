@@ -224,6 +224,39 @@
       font-weight: 600;
       color: #cbd5e1;
     }
+    .qrcode-card img { cursor: pointer; }
+    /* 点击放大 */
+    .lightbox {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      left: 0; top: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85);
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .lightbox.open { display: flex; }
+    .lightbox img {
+      max-width: 90%;
+      max-height: 90%;
+      border-radius: 12px;
+      background: #fff;
+      padding: 16px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    }
+    .lightbox .close {
+      position: fixed;
+      top: 24px;
+      right: 32px;
+      font-size: 32px;
+      color: #fff;
+      cursor: pointer;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+    .lightbox .close:hover { opacity: 1; }
   </style>
 </head>
 <body>
@@ -240,11 +273,11 @@
       <div class="reward-content" id="rewardContent">
         <div class="qrcode-section">
           <div class="qrcode-card">
-            <img src="../assets/qrcode/wechat.jpg" alt="微信支付" onerror="this.style.display='none'" />
+            <img src="/qrcode/wechat.jpg" alt="微信支付" onerror="this.style.display='none'" />
             <div class="qrcode-label">微信支付</div>
           </div>
           <div class="qrcode-card">
-            <img src="../assets/qrcode/alipay.jpg" alt="支付宝" onerror="this.style.display='none'" />
+            <img src="/qrcode/alipay.jpg" alt="支付宝" onerror="this.style.display='none'" />
             <div class="qrcode-label">支付宝</div>
           </div>
         </div>
@@ -252,6 +285,12 @@
           请将收款码图片放到 assets/qrcode/ 目录（wechat.jpg / alipay.jpg
         </div> -->
       </div>
+    </div>
+
+    <!-- 放大查看 -->
+    <div class="lightbox" id="lightbox" onclick="this.classList.remove('open')">
+      <span class="close">&times;</span>
+      <img id="lightboxImg" src="" alt="放大查看" />
     </div>
 
     <!-- 配置区 -->
@@ -282,7 +321,7 @@
       <div class="card-title">🔢 编号列表</div>
       <div class="form-group">
         <label>编号列表（每行一个编号）</label>
-        <textarea id="numberList" placeholder="09001DY00000022207181164&#10;09001DY00000022207181165&#10;09001DY00000022207181166"></textarea>
+        <textarea id="numberList" placeholder="09001kk00000099992207181164&#10;09001kk00000099992207181165&#10;09001kk00000099992207181166"></textarea>
         <div class="hint">每行输入一个编号(可以直接从excel中复制一列出来)，OCR 识别图片中的文本，匹配到对应编号则分拣到同名文件夹</div>
         <div class="hint" style="margin-top:0;color: #f87171">也可以自动读取输出目录下已有文件夹名称作为编号</div>
       </div>
@@ -311,7 +350,7 @@
       <div class="stats" id="stats" style="display:none;">
         <div class="stat-item"><div class="stat-value" id="statTotal">0</div><div class="stat-label">总图片</div></div>
         <div class="stat-item"><div class="stat-value" id="statMatched">0</div><div class="stat-label">已匹配</div></div>
-        <div class="stat-item"><div class="stat-value" id="statUnmatched">0</div><div class="stat-label">模糊/未匹配</div></div>
+        <div class="stat-item"><div class="stat-value" id="statUnmatched">0</div><div class="stat-label">模糊/没对应编码</div></div>
         <div class="stat-item"><div class="stat-value" id="statTime">0s</div><div class="stat-label">耗时</div></div>
       </div>
     </div>
@@ -320,6 +359,11 @@
     <div class="card">
       <div class="card-title">📋 运行日志</div>
       <div class="log-area" id="logArea"></div>
+    </div>
+    
+    <div class="card">
+      <div class="card-title">📈 开源地址</div>
+      <div>https://github.com/WorshipMoon/meter-ocr-app</div>
     </div>
   </div>
 
@@ -436,7 +480,7 @@
           el.statTime.textContent = `${elapsed}s`;
           el.progressFill.style.width = '100%';
           setStatus('完成', 'status-done');
-          log(`🎉 处理完成！共 ${total} 张，匹配 ${matched} 张，模糊 ${unmatched} 张，耗时 ${elapsed} 秒`, 'success');
+          log(`🎉 处理完成！共 ${total} 张，匹配 ${matched} 张，模糊或没对应编码 ${unmatched} 张，耗时 ${elapsed} 秒`, 'success');
           el.btnStart.disabled = false;
           document.querySelectorAll('#imageDir, #outputDir, #numberList, #trailingDigits, .btn-secondary').forEach(el => el.disabled = false);
         });
@@ -470,22 +514,13 @@
       rewardArrow.classList.toggle('open');
     });
 
-    // 加载收款码
-    async function loadQrcodes() {
-      const images = document.querySelectorAll('#qrcodeSection img');
-      for (const img of images) {
-        const name = img.getAttribute('alt') === '微信支付' ? 'wechat.jpg' : 'alipay.jpg';
-        try {
-          const dataUrl = await invoke('get_qrcode', { name });
-          if (dataUrl) {
-            img.src = dataUrl;
-            img.style.display = '';
-          }
-        } catch (e) {
-          console.warn('加载收款码失败:', name, e);
-        }
-      }
-    }
+    // 收款码点击放大
+    document.querySelectorAll('.qrcode-card img').forEach(img => {
+      img.addEventListener('click', () => {
+        document.getElementById('lightboxImg').src = img.src;
+        document.getElementById('lightbox').classList.add('open');
+      });
+    });
 
     // 初始日志
     log('程序已就绪，请选择图片目录和编号列表后点击开始', 'info');

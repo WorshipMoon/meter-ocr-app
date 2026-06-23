@@ -1,3 +1,6 @@
 temp/
 .history
 node_modules/
+dist/
+项目说明.txt
+*.code-workspace
