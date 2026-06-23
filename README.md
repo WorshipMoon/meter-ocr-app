@@ -108,7 +108,6 @@ git push origin v0.1.0
 ---|---
 `.msi` / `.exe` | Windows x64
 `.dmg` | macOS ARM64 (Apple Silicon)
-`.dmg` | macOS x64 (Intel)
 
 ! Mac首次打开时会提示“无法验证开发者/已损坏”。系统设置 -> 隐私与安全性 中点击 “仍要打开”。
 
