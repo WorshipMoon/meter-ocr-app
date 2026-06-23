@@ -100,14 +100,15 @@ cp ~/.cache/ocrs/*.rten .rapidocr_onnxruntime/models/
 推送 tag 自动编译各平台安装包：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
-产物 | 平台
----|---
-`.msi` / `.exe` | Windows x64
-`.dmg` | macOS ARM64 (Apple Silicon)
+| 文件 | 平台 | 说明 |
+|------|------|------|
+| `Meter-OCR-Windows-x64-Setup.exe` | Windows x64 | 安装包，双击安装 |
+| `Meter-OCR-Windows-x64-Portable.zip` | Windows x64 | 解压即用，免安装 |
+| `Meter-OCR-macOS-ARM64.dmg` | macOS Apple Silicon | 拖动安装 |
 
 ! Mac首次打开时会提示“无法验证开发者/已损坏”。系统设置 -> 隐私与安全性 中点击 “仍要打开”。
 

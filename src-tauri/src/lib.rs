@@ -23,12 +23,12 @@ struct OcrDone { total: usize, matched: usize, unmatched: usize, elapsed: u64 }
 
 fn get_model_dir() -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
-        let p = exe.parent().unwrap().join(".rapidocr_onnxruntime/models");
+        let p = exe.parent().unwrap().join("models");
         if p.join("text-detection.rten").exists() { return p; }
     }
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join(".rapidocr_onnxruntime/models");
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
     if p.join("text-detection.rten").exists() { return p; }
-    PathBuf::from(".rapidocr_onnxruntime/models")
+    PathBuf::from("models") // 打包后资源目录
 }
 
 fn find_number(text: &str, numbers: &[String], trailing: usize) -> Option<String> {
@@ -146,8 +146,13 @@ pub fn run() {
     tauri::Builder::default().setup(|app| {
         if cfg!(debug_assertions) { app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?; }
         let md = get_model_dir();
-        let dp = md.join("text-detection.rten");
-        let rp = md.join("text-recognition.rten");
+        let (dp, rp) = if md.join("text-detection.rten").exists() {
+            (md.join("text-detection.rten"), md.join("text-recognition.rten"))
+        } else if let Ok(rd) = app.path().resource_dir() {
+            (rd.join("models/text-detection.rten"), rd.join("models/text-recognition.rten"))
+        } else {
+            return Err("模型文件无法定位".into());
+        };
         if !dp.exists() || !rp.exists() { return Err("模型文件缺失".into()); }
         log::info!("加载检测模型...");
         let det = rten::Model::load_file(&dp).map_err(|e| format!("检测模型加载失败: {}", e))?;

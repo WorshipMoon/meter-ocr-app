@@ -44,6 +44,15 @@ jobs:
       - name: Build
         run: npx tauri build ${{ matrix.args }}
 
+      - name: Package portable zip (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          mkdir -p portable/models
+          cp src-tauri/models/*.rten portable/models/
+          cp src-tauri/target/release/meter-ocr-app.exe portable/
+          cd portable && 7z a ../Meter-OCR-Windows-x64-Portable.zip * && cd ..
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -51,8 +60,8 @@ jobs:
           path: |
             src-tauri/target/**/release/bundle/**/*.msi
             src-tauri/target/**/release/bundle/**/*.dmg
-            src-tauri/target/**/release/bundle/**/*.app
-            src-tauri/target/release/*.exe
+            src-tauri/target/**/release/bundle/**/*.exe
+            Meter-OCR-Windows-x64-Portable.zip
 
   release:
     needs: [build]
