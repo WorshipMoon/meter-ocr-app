@@ -41,34 +41,10 @@ jobs:
       - name: Install macOS dependencies
         if: contains(matrix.platform, 'macos')
         run: |
-          xcode-select --install || true
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
       - name: Install frontend dependencies
         run: npm install
-
-      - name: Download ONNX Runtime DLL (Windows)
-        if: contains(matrix.platform, 'windows')
-        shell: bash
-        run: |
-          mkdir -p .rapidocr_onnxruntime
-          curl -L -o .rapidocr_onnxruntime/onnxruntime.dll \
-            "https://github.com/microsoft/onnxruntime/releases/download/v1.24.1/onnxruntime-win-x64-1.24.1.zip" -f || true
-          # Extract from zip if download succeeded
-          if [ -f .rapidocr_onnxruntime/onnxruntime.dll ] && [ $(stat -c%s .rapidocr_onnxruntime/onnxruntime.dll 2>/dev/null || stat -f%z .rapidocr_onnxruntime/onnxruntime.dll 2>/dev/null || echo 0) -lt 1000 ]; then
-            curl -L -o /tmp/ort.zip "https://github.com/microsoft/onnxruntime/releases/download/v1.24.1/onnxruntime-win-x64-1.24.1.zip"
-            unzip -o /tmp/ort.zip "onnxruntime-win-x64-1.24.1/lib/*" -d .rapidocr_onnxruntime/
-            cp .rapidocr_onnxruntime/onnxruntime-win-x64-1.24.1/lib/onnxruntime.dll .rapidocr_onnxruntime/
-            cp .rapidocr_onnxruntime/onnxruntime-win-x64-1.24.1/lib/onnxruntime_providers_shared.dll .rapidocr_onnxruntime/ || true
-          fi
-
-      - name: Download ONNX Runtime dylib (macOS)
-        if: contains(matrix.platform, 'macos')
-        run: |
-          mkdir -p .rapidocr_onnxruntime
-          curl -L -o /tmp/ort.tgz "https://github.com/microsoft/onnxruntime/releases/download/v1.24.1/onnxruntime-osx-universal2-1.24.1.tgz"
-          tar -xzf /tmp/ort.tgz -C .rapidocr_onnxruntime/
-          cp .rapidocr_onnxruntime/onnxruntime-osx-universal2-1.24.1/lib/libonnxruntime.*.dylib .rapidocr_onnxruntime/ || true
 
       - name: Build
         run: npx tauri build ${{ matrix.args }}
