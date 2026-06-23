@@ -1,5 +1,6 @@
-use anyhow::{Context, Result};
 use base64::Engine;
+use image::GenericImageView;
+use ocrs::{ImageSource, OcrEngine, OcrEngineParams};
 use regex::Regex;
 use serde::Serialize;
 use std::fs;
@@ -7,10 +8,12 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, State};
 use walkdir::WalkDir;
 
-struct AppState;
+struct AppState {
+    engine: OcrEngine,
+}
 
 #[derive(Clone, Serialize)]
 struct OcrProgress { current: usize, total: usize, matched: usize, unmatched: usize, current_file: String, matched_number: Option<String>, ocr_text: String }
@@ -18,20 +21,15 @@ struct OcrProgress { current: usize, total: usize, matched: usize, unmatched: us
 #[derive(Clone, Serialize)]
 struct OcrDone { total: usize, matched: usize, unmatched: usize, elapsed: u64 }
 
-// ─── Python OCR 调用 ───────────────────────────────────────
-
-fn ocr_image(img_path: &Path) -> Result<String> {
-    let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("ocr_helper.py");
-    if !script.exists() { return Err(anyhow::anyhow!("ocr_helper.py 不存在")); }
-    let path = img_path.to_string_lossy().to_string();
-    let out = std::process::Command::new("python").arg(&script).arg(&path).output().context("调用 Python 失败")?;
-    if !out.status.success() { return Err(anyhow::anyhow!("Python 错误: {}", String::from_utf8_lossy(&out.stderr))); }
-    let parsed: serde_json::Value = serde_json::from_slice(&out.stdout).context("解析 JSON 失败")?;
-    if let Some(e) = parsed[&path]["error"].as_str() { return Err(anyhow::anyhow!("OCR 错误: {}", e)); }
-    Ok(parsed[&path]["text"].as_str().unwrap_or("").to_string())
+fn get_model_dir() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        let p = exe.parent().unwrap().join(".rapidocr_onnxruntime/models");
+        if p.join("text-detection.rten").exists() { return p; }
+    }
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join(".rapidocr_onnxruntime/models");
+    if p.join("text-detection.rten").exists() { return p; }
+    PathBuf::from(".rapidocr_onnxruntime/models")
 }
-
-// ─── 编号匹配 ───────────────────────────────────────────────
 
 fn find_number(text: &str, numbers: &[String], trailing: usize) -> Option<String> {
     let c: String = text.chars().filter(|c| !c.is_whitespace()).collect();
@@ -48,16 +46,12 @@ fn find_number(text: &str, numbers: &[String], trailing: usize) -> Option<String
     None
 }
 
-// ─── 收集图片 ───────────────────────────────────────────────
-
 fn collect_images(dir: &Path) -> Vec<PathBuf> {
     let exts = ["jpg", "jpeg", "png", "bmp", "tiff", "tif", "webp"];
     WalkDir::new(dir).max_depth(1).into_iter().filter_map(|e| e.ok()).filter(|e| e.file_type().is_file()).filter(|e| {
         e.path().extension().and_then(|ext| ext.to_str()).map(|ext| exts.contains(&ext.to_lowercase().as_str())).unwrap_or(false)
     }).map(|e| e.path().to_path_buf()).collect()
 }
-
-// ─── Tauri Commands ─────────────────────────────────────────
 
 #[tauri::command]
 async fn select_folder() -> Result<Option<String>, String> {
@@ -66,9 +60,13 @@ async fn select_folder() -> Result<Option<String>, String> {
 
 #[tauri::command]
 fn get_qrcode(ah: tauri::AppHandle, name: String) -> Result<Option<String>, String> {
-    let dir = if cfg!(debug_assertions) { PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("assets/qrcode") }
-        else { ah.path().resource_dir().map(|p| p.join("assets/qrcode")).unwrap_or_else(|_| PathBuf::from("assets/qrcode")) };
-    let fp = dir.join(&name); if !fp.exists() { return Ok(None); }
+    let dir = if cfg!(debug_assertions) {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("assets/qrcode")
+    } else {
+        ah.path().resource_dir().map(|p| p.join("assets/qrcode")).unwrap_or(PathBuf::from("assets/qrcode"))
+    };
+    let fp = dir.join(&name);
+    if !fp.exists() { return Ok(None); }
     let d = fs::read(&fp).map_err(|e| e.to_string())?;
     let m = match fp.extension().and_then(|e| e.to_str()) { Some("png") => "image/png", Some("jpg")|Some("jpeg") => "image/jpeg", _ => "image/png" };
     Ok(Some(format!("data:{};base64,{}", m, base64::engine::general_purpose::STANDARD.encode(&d))))
@@ -76,14 +74,16 @@ fn get_qrcode(ah: tauri::AppHandle, name: String) -> Result<Option<String>, Stri
 
 #[tauri::command]
 fn list_folders(path: String) -> Result<Vec<String>, String> {
-    let dir = Path::new(&path); if !dir.is_dir() { return Err("".to_string()); }
+    let dir = Path::new(&path);
+    if !dir.is_dir() { return Err("".to_string()); }
     let mut f: Vec<String> = fs::read_dir(dir).map_err(|e| e.to_string())?.filter_map(|e| e.ok()).filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false)).filter_map(|e| e.file_name().to_str().map(|s| s.to_string())).collect();
     f.sort(); Ok(f)
 }
 
 #[tauri::command]
-async fn start_ocr(image_dir: String, output_dir: Option<String>, numbers: Vec<String>, trailing_digits: usize, ah: tauri::AppHandle) -> Result<(), String> {
-    let ip = Path::new(&image_dir); if !ip.is_dir() { return Err("图片目录无效".to_string()); }
+async fn start_ocr(image_dir: String, output_dir: Option<String>, numbers: Vec<String>, trailing_digits: usize, ah: tauri::AppHandle, st: tauri::State<'_, AppState>) -> Result<(), String> {
+    let ip = Path::new(&image_dir);
+    if !ip.is_dir() { return Err("图片目录无效".to_string()); }
     let op = match output_dir { Some(p) if !p.is_empty() => PathBuf::from(p), _ => ip.join("output") };
     fs::create_dir_all(&op).map_err(|e| e.to_string())?;
     for n in &numbers { fs::create_dir_all(&op.join(n)).map_err(|e| e.to_string())?; }
@@ -96,7 +96,24 @@ async fn start_ocr(image_dir: String, output_dir: Option<String>, numbers: Vec<S
         let fn_ = img.file_name().unwrap_or_default().to_string_lossy().to_string();
         ah.emit("ocr-progress", OcrProgress { current: i+1, total, matched: mc.load(Ordering::SeqCst), unmatched: uc.load(Ordering::SeqCst), current_file: fn_.clone(), matched_number: None, ocr_text: String::new() }).ok();
 
-        match ocr_image(img) {
+        let result = (|| -> anyhow::Result<String> {
+            let img = image::open(img).map_err(|e| anyhow::anyhow!("打开图片失败: {}", e))?;
+            // 缩小图片提高速度（最长边不超过 1500px）
+            let max_side = 1500u32;
+            let (w, h) = img.dimensions();
+            let img = if w.max(h) > max_side {
+                let ratio = max_side as f64 / w.max(h) as f64;
+                img.resize((w as f64 * ratio) as u32, (h as f64 * ratio) as u32, image::imageops::FilterType::Triangle)
+            } else { img };
+            let rgb = img.to_rgb8();
+            let (w, h) = rgb.dimensions();
+            let pixels = rgb.into_raw();
+            let src = ImageSource::from_bytes(&pixels, (w, h)).map_err(|e| anyhow::anyhow!("{:?}", e))?;
+            let input = st.engine.prepare_input(src)?;
+            st.engine.get_text(&input)
+        })();
+
+        match result {
             Ok(t) => {
                 log::info!("[OCR] {} → {}", fn_, t);
                 if let Some(n) = find_number(&t, &numbers, trailing_digits) {
@@ -118,13 +135,21 @@ async fn start_ocr(image_dir: String, output_dir: Option<String>, numbers: Vec<S
 pub fn run() {
     tauri::Builder::default().setup(|app| {
         if cfg!(debug_assertions) { app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?; }
-        let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("ocr_helper.py");
-        if script.exists() { log::info!("ocr_helper.py 已就绪"); }
-        match std::process::Command::new("python").arg("--version").output() {
-            Ok(o) if o.status.success() => log::info!("Python: {}", String::from_utf8_lossy(&o.stdout).trim()),
-            _ => log::warn!("Python 不可用"),
-        }
-        app.manage(AppState);
+        let md = get_model_dir();
+        let dp = md.join("text-detection.rten");
+        let rp = md.join("text-recognition.rten");
+        if !dp.exists() || !rp.exists() { return Err("模型文件缺失".into()); }
+        log::info!("加载检测模型...");
+        let det = rten::Model::load_file(&dp).map_err(|e| format!("检测模型加载失败: {}", e))?;
+        log::info!("加载识别模型...");
+        let rec = rten::Model::load_file(&rp).map_err(|e| format!("识别模型加载失败: {}", e))?;
+        let engine = OcrEngine::new(OcrEngineParams {
+            detection_model: Some(det),
+            recognition_model: Some(rec),
+            allowed_chars: Some("0123456789".to_string()),
+            ..Default::default()
+        }).map_err(|e| format!("引擎初始化失败: {}", e))?;
+        app.manage(AppState { engine });
         Ok(())
     }).invoke_handler(tauri::generate_handler![start_ocr, list_folders, select_folder, get_qrcode]).run(tauri::generate_context!()).expect("error running app");
 }

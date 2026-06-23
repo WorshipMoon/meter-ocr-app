@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Meter OCR - 电表图片分拣",
+        "title": "Meter OCR - 图片分拣",
         "width": 900,
         "height": 750,
         "resizable": true,

@@ -24,6 +24,9 @@ tauri-plugin-log = "2"
 walkdir = "2"
 anyhow = "1"
 base64 = "0.22"
+image = "0.25"
 regex = "1"
 rfd = "0.15"
 tokio = { version = "1", features = ["time"] }
+ocrs = { version = "0.12", features = ["onnx"] }
+rten = { version = "0.24", features = ["onnx_format"] }

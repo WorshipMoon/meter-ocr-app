@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Meter OCR - 电表图片分拣</title>
+  <title>Meter OCR - 图片分拣</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -229,7 +229,7 @@
 <body>
   <div class="container">
     <h1>⚡ Meter OCR</h1>
-    <p class="subtitle">电表图片 OCR 识别与自动分拣工具</p>
+    <p class="subtitle">图片 OCR 识别与自动分拣工具</p>
 
     <!-- 收款码 -->
     <div class="card">
@@ -240,17 +240,17 @@
       <div class="reward-content" id="rewardContent">
         <div class="qrcode-section">
           <div class="qrcode-card">
-            <img src="../assets/qrcode/wechat.png" alt="微信支付" onerror="this.style.display='none'" />
+            <img src="../assets/qrcode/wechat.hpg" alt="微信支付" onerror="this.style.display='none'" />
             <div class="qrcode-label">微信支付</div>
           </div>
           <div class="qrcode-card">
-            <img src="../assets/qrcode/alipay.png" alt="支付宝" onerror="this.style.display='none'" />
+            <img src="../assets/qrcode/alipay.jpg" alt="支付宝" onerror="this.style.display='none'" />
             <div class="qrcode-label">支付宝</div>
           </div>
         </div>
-        <div class="hint" style="text-align:center; margin-top:12px;">
-          请将收款码图片放到 assets/qrcode/ 目录（wechat.png / alipay.png）
-        </div>
+        <!-- <div class="hint" style="text-align:center; margin-top:12px;">
+          请将收款码图片放到 assets/qrcode/ 目录（wechat.jpg / alipay.jpg
+        </div> -->
       </div>
     </div>
 
@@ -285,9 +285,10 @@
         <textarea id="numberList" placeholder="09001DY00000022207181164&#10;09001DY00000022207181165&#10;09001DY00000022207181166"></textarea>
         <div class="hint">每行输入一个编号，OCR 识别图片中的文本，匹配到对应编号则分拣到同名文件夹</div>
       </div>
+      <p>自动读取输出目录下已有文件夹名称作为编号</p>
       <div class="row">
         <button class="btn-secondary" id="btnLoadFolders">📂 从已有文件夹加载编号</button>
-        <span class="hint" style="margin-top:0">自动读取输出目录下已有文件夹名称作为编号</span>
+        <!-- <span class="hint" style="margin-top:0;color: #f87171">自动读取输出目录下已有文件夹名称作为编号</span> -->
       </div>
       <div class="form-group" style="margin-top:12px">
         <label>🔍 特征匹配 — 编号后几位作为匹配特征？</label>
