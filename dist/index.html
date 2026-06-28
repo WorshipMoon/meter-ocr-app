@@ -258,7 +258,7 @@
     }
     .lightbox .close:hover { opacity: 1; }
   </style>
-  <script type="module" crossorigin src="/assets/index-BF5u2jys.js"></script>
+  <script type="module" crossorigin src="/assets/index-DmIwuL1O.js"></script>
 </head>
 <body>
   <div class="container">
@@ -305,6 +305,9 @@
             <button class="btn-secondary" id="btnBrowseImage">浏览</button>
           </div>
           <div class="hint">存放待识别图片的文件夹</div>
+          <label style="display:flex;align-items:center;gap:4px;color:#94a3b8;font-size:12px;margin-top:6px">
+            <input type="checkbox" id="recursiveImages" checked /> 含子文件夹
+          </label>
         </div>
         <div class="form-group">
           <label>输出目录（可选）</label>
@@ -313,6 +316,9 @@
             <button class="btn-secondary" id="btnBrowseOutput">浏览</button>
           </div>
           <div class="hint">分拣结果存放位置</div>
+          <label style="display:flex;align-items:center;gap:4px;color:#94a3b8;font-size:12px;margin-top:6px">
+            <input type="checkbox" id="recursiveFolders" checked /> 往下一层加载编号
+          </label>
         </div>
       </div>
     </div>

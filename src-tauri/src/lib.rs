@@ -46,11 +46,23 @@ fn find_number(text: &str, numbers: &[String], trailing: usize) -> Option<String
     None
 }
 
-fn collect_images(dir: &Path) -> Vec<PathBuf> {
+fn collect_images(dir: &Path, recursive: bool) -> Vec<PathBuf> {
     let exts = ["jpg", "jpeg", "png", "bmp", "tiff", "tif", "webp"];
-    WalkDir::new(dir).max_depth(1).into_iter().filter_map(|e| e.ok()).filter(|e| e.file_type().is_file()).filter(|e| {
+    let mut w = WalkDir::new(dir);
+    if !recursive { w = w.max_depth(1); }
+    w.into_iter().filter_map(|e| e.ok()).filter(|e| e.file_type().is_file()).filter(|e| {
         e.path().extension().and_then(|ext| ext.to_str()).map(|ext| exts.contains(&ext.to_lowercase().as_str())).unwrap_or(false)
     }).map(|e| e.path().to_path_buf()).collect()
+}
+
+fn filter_output_dir(images: Vec<PathBuf>, output_dir: &Path, image_dir: &Path) -> Vec<PathBuf> {
+    // 排除输出目录下的文件（防止递归扫描时把 output 文件夹也扫进去）
+    images.into_iter().filter(|p| {
+        // 输出目录不在图片目录内 → 无需过滤
+        if !output_dir.starts_with(image_dir) { return true; }
+        // 输出目录在图片目录内 → 排除它
+        !p.starts_with(output_dir)
+    }).collect()
 }
 
 #[tauri::command]
@@ -84,22 +96,49 @@ fn get_qrcode(ah: tauri::AppHandle, name: String) -> Result<Option<String>, Stri
 }
 
 #[tauri::command]
-fn list_folders(path: String) -> Result<Vec<String>, String> {
+fn list_folders(path: String, recursive: bool) -> Result<Vec<String>, String> {
     let dir = Path::new(&path);
     if !dir.is_dir() { return Err("".to_string()); }
-    let mut f: Vec<String> = fs::read_dir(dir).map_err(|e| e.to_string())?.filter_map(|e| e.ok()).filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false)).filter_map(|e| e.file_name().to_str().map(|s| s.to_string())).collect();
-    f.sort(); Ok(f)
+    let mut f: Vec<String> = if recursive {
+        WalkDir::new(dir)
+            .max_depth(2)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_dir() && e.depth() == 2)
+            .filter_map(|e| e.path().file_name().and_then(|s| s.to_str()).map(|s| s.to_string()))
+            .collect()
+    } else {
+        fs::read_dir(dir).map_err(|e| e.to_string())?.filter_map(|e| e.ok()).filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false)).filter_map(|e| e.file_name().to_str().map(|s| s.to_string())).collect()
+    };
+    f.sort();
+    f.dedup();
+    Ok(f)
+}
+
+/// 递归模式下查找编号文件夹的真实路径（depth=2）
+fn find_number_path(output_dir: &Path, number: &str) -> PathBuf {
+    WalkDir::new(output_dir)
+        .max_depth(2)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_dir() && e.depth() == 2)
+        .find(|e| e.path().file_name().and_then(|s| s.to_str()).map(|s| s == number).unwrap_or(false))
+        .map(|e| e.path().to_path_buf())
+        .unwrap_or_else(|| output_dir.join(number))
 }
 
 #[tauri::command]
-async fn start_ocr(image_dir: String, output_dir: Option<String>, numbers: Vec<String>, trailing_digits: usize, ah: tauri::AppHandle, st: tauri::State<'_, AppState>) -> Result<(), String> {
+async fn start_ocr(image_dir: String, output_dir: Option<String>, numbers: Vec<String>, trailing_digits: usize, recursive: bool, ah: tauri::AppHandle, st: tauri::State<'_, AppState>) -> Result<(), String> {
     let ip = Path::new(&image_dir);
     if !ip.is_dir() { return Err("图片目录无效".to_string()); }
     let op = match output_dir { Some(p) if !p.is_empty() => PathBuf::from(p), _ => ip.join("output") };
     fs::create_dir_all(&op).map_err(|e| e.to_string())?;
-    for n in &numbers { fs::create_dir_all(&op.join(n)).map_err(|e| e.to_string())?; }
+    for n in &numbers {
+        let target_dir = find_number_path(&op, n);
+        fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
+    }
     let uq = op.join("模糊或没对应编码图片"); fs::create_dir_all(&uq).map_err(|e| e.to_string())?;
-    let imgs = collect_images(ip); let total = imgs.len();
+    let imgs = filter_output_dir(collect_images(ip, recursive), &op, ip); let total = imgs.len();
     if total == 0 { return Err("未找到图片".to_string()); }
     let t0 = Instant::now(); let mc = Arc::new(AtomicUsize::new(0)); let uc = Arc::new(AtomicUsize::new(0));
 
@@ -127,7 +166,8 @@ async fn start_ocr(image_dir: String, output_dir: Option<String>, numbers: Vec<S
             Ok(t) => {
                 log::info!("[OCR] {} → {}", fn_, t);
                 if let Some(n) = find_number(&t, &numbers, trailing_digits) {
-                    fs::copy(img, &op.join(&n).join(&fn_)).map_err(|e| e.to_string())?;
+                    let dest_dir = find_number_path(&op, &n);
+                    fs::copy(img, &dest_dir.join(&fn_)).map_err(|e| e.to_string())?;
                     mc.fetch_add(1, Ordering::SeqCst);
                     ah.emit("ocr-progress", OcrProgress { current: i+1, total, matched: mc.load(Ordering::SeqCst), unmatched: uc.load(Ordering::SeqCst), current_file: fn_.clone(), matched_number: Some(n), ocr_text: t }).ok();
                 } else { fs::copy(img, &uq.join(&fn_)).ok(); uc.fetch_add(1, Ordering::SeqCst); }
